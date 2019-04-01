@@ -19,58 +19,75 @@ from imblearn.over_sampling import SMOTE
 from sklearn.pipeline import Pipeline
 import feature_engineering as fe
 import get_models
+import joblib
+import xgboost as xgb
 
 
 gc.enable()
 
 
-NAME = 'lgbm2'
+NAME = 'xgb_1'
     
-def fit_lgb(X_fit, y_fit, X_val, y_val, counter, lgb_path):
+def fit_lgb(d_train, d_val, X_val, y_val, counter, lgb_path):
     
-    model = get_models.get_lgbm_2()
+    #model = get_models.get_xgboost()
     
+    params = {'tree_method': 'hist',
+                 'objective': 'binary:logistic',
+                 'eval_metric': 'auc',
+                 'learning_rate': 0.0936165921314771,
+                 'max_depth': 2,
+                 'colsample_bytree': 0.3561271102144279,
+                 'subsample': 0.8246604621518232,
+                 'min_child_weight': 53,
+                 'gamma': 9.943467991283027,
+                 'silent': 1}
     
-    model.fit(X_fit, y_fit, 
-              eval_set=[(X_val, y_val)],
-              verbose=3500, 
-              early_stopping_rounds=3500)
-      
-
-    cv_val = model.predict_proba(X_val)[:,1]
+    model = xgb.train(params=params, dtrain=d_train, num_boost_round=4000, evals=[(d_train, "Train"), (d_val, "Val")],
+        verbose_eval= 100, early_stopping_rounds=50) 
+    
+    cv_val = model.predict(xgb.DMatrix(X_val))
     
     #Save LightGBM Model
-    save_to = '{}{}_fold{}.txt'.format(lgb_path, NAME, counter+1)
-    model.booster_.save_model(save_to)
-    
+    save_to = '{}{}_fold{}.joblib'.format(lgb_path, NAME, counter+1)
+    #save model
+    joblib.dump(model, save_to) 
+
     return cv_val
     
 def train_stage(df, lgb_path):
     
     
-    y_df = np.array(df['target'])                        
+    y_df = df['target']   
+    train_cols = [c for c in df.columns if c not in ["ID_code", "target"]]                   
     df_ids = np.array(df.index)                     
     #df.drop(['ID_code', 'target', 'Unnamed: 0'], axis=1, inplace=True)
     df.drop(['ID_code', 'target'], axis=1, inplace=True)
-        
-
-    lgb_cv_result = np.zeros(df.shape[0])
     
-    skf = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
-    skf.get_n_splits(df_ids, y_df)
+
+
+    oof_preds = np.zeros(train_df.shape[0])
+    sub_preds = np.zeros(test_df.shape[0])
+    
+    folds = StratifiedKFold(n_splits=10, shuffle=True, random_state=42)
+
     
     print('\nModel Fitting...')
-    for counter, ids in enumerate(skf.split(df_ids, y_df)):
-        print('\nFold {}'.format(counter+1))
-        X_fit, y_fit = df.values[ids[0]], y_df[ids[0]]
-        X_val, y_val = df.values[ids[1]], y_df[ids[1]]
-        #X_fit, y_fit = df[ids[0]], y_df[ids[0]]
-        #X_val, y_val = df[ids[1]], y_df[ids[1]]
+    for n_fold, (trn_idx, val_idx) in enumerate(folds.split(df, y_df)):
+    
+        X_fit, y_fit = df[train_cols].iloc[trn_idx], y_df.iloc[trn_idx]
+        X_val, y_val = df[train_cols].iloc[val_idx], y_df.iloc[val_idx]
         
         # Added augemntation
         #X_fit, y_fit = fe.augment(X_fit, y_fit)
+        
+        d_train = xgb.DMatrix(X_fit, y_fit, feature_names=X_fit.columns)
+        d_val = xgb.DMatrix(X_val, y_val, feature_names=X_val.columns)
+        
+        oof_preds[val_idx] = clf.predict(xgb.DMatrix(val_x))
+        sub_preds += clf.predict(xgb.DMatrix(test_df[train_cols])) / folds.n_splits
     
-        lgb_cv_result[ids[1]] += fit_lgb(X_fit, y_fit, X_val, y_val, counter, lgb_path)
+        lgb_cv_result[ids[1]] += fit_lgb(d_train, d_val, X_val, y_val, counter, lgb_path)
         del X_fit, X_val, y_fit, y_val
         gc.collect()
     
@@ -91,7 +108,8 @@ def prediction_stage(df, lgb_path, submit=True):
     
     for m_name in lgb_models:
         #Load LightGBM Model
-        model = lgb.Booster(model_file='{}{}'.format(lgb_path, m_name))
+        #model = lgb.Booster(model_file='{}{}'.format(lgb_path, m_name))
+        model = joblib.load('{}{}'.format(lgb_path, m_name))
         lgb_result += model.predict(df.values)
 
     lgb_result /= len(lgb_models)
@@ -107,9 +125,9 @@ def prediction_stage(df, lgb_path, submit=True):
 
 ############ RUN
 
-train_path = 'data/train.csv'
-test_path  = 'data/test.csv'
-lgb_path = 'lgbm2_models/'
+train_path = 'data/train_cut.csv'
+test_path  = 'data/test_cut.csv'
+lgb_path = 'xgb1_models/'
 
 print('Load Train Data.')
 df_train = pd.read_csv(train_path)

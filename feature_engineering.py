@@ -441,7 +441,7 @@ def do_feature_engineering_test(dataset):
 
 
 def do_feature_engineering(dataset, mode='train'):
-    
+    """
     # Statistic stuff has to go first, before adding other features
     #train_stats_feats, test_stats_feats = add_statistics_features_for_columns()
     # READ INSTEAD
@@ -456,7 +456,7 @@ def do_feature_engineering(dataset, mode='train'):
         dataset = pd.concat([dataset, train_stats_feats], axis=1)
     else:
         dataset = pd.concat([dataset, test_stats_feats], axis=1)
-      
+      """
 
     dataset = combine_81_12(dataset)
     dataset = combine_25_15(dataset)

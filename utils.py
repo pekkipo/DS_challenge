@@ -14,7 +14,7 @@ import tensorflow as tf
 
 def reduce_csv_file(file_in, file_out, num_rows):
     df = pd.read_csv(file_in)
-    df.sample(num_rows).to_csv(file_out) # index False or smth to avoid new lame column
+    df.sample(num_rows).to_csv(file_out, index=False) # index False or smth to avoid new lame column
         
 file_train = "data/train.csv"
 file_test = "data/test.csv"
